@@ -121,4 +121,9 @@ Set your `.pkl` paths in `platform.yaml` accordingly.
 
 ## 📜 License
 
-This project is for academic use only (HKBU COMP4026/7055 coursework).
+This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) license.
+
+It is intended for **academic, research, and educational purposes only**, as part of HKBU COMP4026/7055 coursework.
+Commercial use is **not permitted**.
+
+
