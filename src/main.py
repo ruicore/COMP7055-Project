@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 from models import ConvNeXtTiny, DenseNet121, EfficientNetB0, MobileNetV3, ResNet18, ResNet50, ShuffleNetV2
-from run import plot_results, run_experiments
+from runner import plot_results, run_experiments
 
 
 def load_gan_paths(config_file='platform.yaml', platform='local'):

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, TQDMProgressBar
 
 from base import LitClassification
 from data import FERData
@@ -64,7 +64,9 @@ def run_experiments(
                     callbacks=[
                         early_stop,
                         checkpoint,
+                        TQDMProgressBar(refresh_rate=10),
                     ],
+                    enable_progress_bar=True,
                     log_every_n_steps=10,
                 )
 
