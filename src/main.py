@@ -2,7 +2,7 @@ import argparse
 
 import yaml
 
-from models import EfficientNetB0, ResNet18, ResNet50
+from models import ConvNeXtTiny, DenseNet121, EfficientNetB0, MobileNetV3, ResNet18, ResNet50, ShuffleNetV2
 from train import plot_results, run_experiments
 
 
@@ -18,8 +18,22 @@ def run():
     args = parser.parse_args()
 
     gans = load_gan_paths(config_file='platform.yaml', platform=args.platform)
-    real_rates = [0.0, 0.1, 0.3, 0.5, 1.0]
-    model_classes = [ResNet18, ResNet50, EfficientNetB0]
+    real_rates = [
+        0.0,
+        0.1,
+        0.3,
+        0.5,
+        1.0,
+    ]
+    model_classes = model_classes = [
+        ResNet18,
+        ResNet50,
+        EfficientNetB0,
+        MobileNetV3,
+        ShuffleNetV2,
+        DenseNet121,
+        ConvNeXtTiny,
+    ]
     real_csv_path = '.cache/fer2013.csv'
 
     run_experiments(gans, real_rates, model_classes, real_csv_path)

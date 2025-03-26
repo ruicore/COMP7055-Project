@@ -41,8 +41,7 @@ class FER2013CSV(Dataset):
         row = self.data.iloc[idx]
         pixels = np.array(row['pixels'].split(), dtype=np.uint8)
         image = Image.fromarray(pixels.reshape(48, 48))
-        label = int(row['emotion'])
-        return self.transform(image), label
+        return self.transform(image), int(row['emotion'])
 
 
 class _SyntheticDataset(Dataset):
@@ -63,7 +62,7 @@ class _SyntheticDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         path = self.image_paths[idx]
         img = Image.open(path).convert('RGB')
         label = int(path.name.split('_')[-1].split('.')[0])
@@ -98,6 +97,7 @@ class FERData(L.LightningDataModule):
         self.num_workers = num_workers
         self.force_refresh = force_refresh
         self.data_dir = Path(create_synthetic_cache_dir(data_dir, gan_path, rate))
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def prepare_data(self):
         if self.force_refresh or not self.data_dir.exists() or not any(self.data_dir.iterdir()):
@@ -109,7 +109,7 @@ class FERData(L.LightningDataModule):
     @torch.no_grad()
     def generate_fake_images(self):
         z_dim, c_dim, device = self.G.z_dim, self.G.c_dim, next(self.G.parameters()).device
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+
         num_per_class = self.total_num // self.num_classes
         for label in range(self.num_classes):
             class_dir = self.data_dir / f'class_{label}'

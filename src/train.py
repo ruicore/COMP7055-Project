@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
 
 def run_experiments(
-    gans,
+    gans: list[str],
     real_rates: list[float],
     model_classes: list[type[LitClassification]],
     real_csv_path: str,
@@ -26,15 +26,6 @@ def run_experiments(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
-
-    early_stop = EarlyStopping(monitor='val_loss', patience=5, mode='min')
-    checkpoint = ModelCheckpoint(
-        monitor='val_f1',
-        mode='max',
-        save_top_k=1,
-        dirpath=f'checkpoints/',
-        filename='{epoch}-{val_f1:.3f}',
-    )
 
     for gan_path in gans:
         with open(gan_path, 'rb') as f:
@@ -46,12 +37,14 @@ def run_experiments(
                 log_path = output_dir / label
                 log_path.mkdir(parents=True, exist_ok=True)
 
-                # checkpoint = ModelCheckpoint(
-                #     monitor='val_f1', mode='max', save_top_k=1, dirpath=log_path, filename='{epoch}-{val_f1:.3f}'
-                # )
-                #
-                # early_stop = EarlyStopping(monitor='val_loss', patience=5, mode='min')
-
+                early_stop = EarlyStopping(monitor='val_loss', patience=5, mode='min')
+                checkpoint = ModelCheckpoint(
+                    monitor='val_f1',
+                    mode='max',
+                    save_top_k=1,
+                    dirpath=f'checkpoints/{label}',
+                    filename='{epoch}-{val_f1:.3f}',
+                )
                 model = ModelClass(num_classes=7)
                 logging.info(f"🚀 Training: {label}")
 
