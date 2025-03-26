@@ -17,9 +17,9 @@ def load_network_pkl(f, device='cpu', verbose=True):
     """
     if isinstance(f, str):
         with open(f, 'rb') as file:
-            data = pickle.load(file)
+            data = torch.load(f, map_location=device, weights_only=False)
     else:
-        data = pickle.load(f)
+        data = torch.load(f, map_location=device, weights_only=False)
 
     # Validate presence of expected keys
     if not isinstance(data, dict):

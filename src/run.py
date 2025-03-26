@@ -8,9 +8,9 @@ import yaml
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
-import legacy
 from base import LitClassification
 from data import FERData
+from legacy import load_network_pkl
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
@@ -29,7 +29,7 @@ def run_experiments(
 
     for gan_path in gans:
         with open(gan_path, 'rb') as f:
-            G = legacy.load_network_pkl(f)['G_ema'].to('cuda')
+            G = load_network_pkl(f)['G_ema'].to('cpu')
 
         for rate in real_rates:
             for ModelClass in model_classes:

@@ -4,4 +4,4 @@ kaggle:
 
 
 local:
-  - .cache/gan/network-snapshot-004216x64.pkl'
+  - .cache/gan/network-snapshot-004216x64.pkl
