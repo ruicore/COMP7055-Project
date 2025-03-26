@@ -29,7 +29,7 @@ def run_experiments(
 
     for gan_path in gans:
         with open(gan_path, 'rb') as f:
-            gan = load_network_pkl(f)['G_ema']
+            gan = load_network_pkl(f)['G_ema'].to('cuda')
 
         for rate in real_rates:
             for ModelClass in model_classes:
@@ -46,7 +46,6 @@ def run_experiments(
                     filename='{epoch}-{val_f1:.3f}',
                 )
                 model = ModelClass(num_classes=7)
-                gan.to(model.device)
                 logging.info(f"🚀 Training: {label}")
 
                 data_module = FERData(
