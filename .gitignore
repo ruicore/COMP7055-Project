@@ -166,3 +166,5 @@ cython_debug/
 .pypirc
 data
 *.pth
+*.pkl
+.cache
