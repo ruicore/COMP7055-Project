@@ -25,7 +25,7 @@ def run():
         0.5,
         1.0,
     ]
-    model_classes = model_classes = [
+    model_classes = [
         ResNet18,
         ResNet50,
         EfficientNetB0,
