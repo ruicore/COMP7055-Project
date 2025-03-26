@@ -1,35 +1,40 @@
-import hashlib
 import logging
 import re
 from pathlib import Path
 
-import legacy
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-import pytorch_lightning as L
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import yaml
-from PIL import Image
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from torchmetrics.classification import AUROC, Accuracy, ConfusionMatrix, F1Score, Precision, Recall
-from torchvision import models, transforms
-from torchvision.utils import save_image
-from tqdm import tqdm
 
-from data import FER2013CSV, FERData
+import legacy
+from base import LitClassification
+from data import FERData
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
 
-def run_experiments(gans, real_rates, model_classes, real_csv_path, output_dir='experiments', max_epochs=30):
+def run_experiments(
+    gans,
+    real_rates: list[float],
+    model_classes: list[type[LitClassification]],
+    real_csv_path: str,
+    output_dir='experiments',
+    max_epochs: int = 50,
+):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
+
+    early_stop = EarlyStopping(monitor='val_loss', patience=5, mode='min')
+    checkpoint = ModelCheckpoint(
+        monitor='val_f1',
+        mode='max',
+        save_top_k=1,
+        dirpath=f'checkpoints/',
+        filename='{epoch}-{val_f1:.3f}',
+    )
 
     for gan_path in gans:
         with open(gan_path, 'rb') as f:
@@ -41,11 +46,11 @@ def run_experiments(gans, real_rates, model_classes, real_csv_path, output_dir='
                 log_path = output_dir / label
                 log_path.mkdir(parents=True, exist_ok=True)
 
-                checkpoint = ModelCheckpoint(
-                    monitor='val_f1', mode='max', save_top_k=1, dirpath=log_path, filename='{epoch}-{val_f1:.3f}'
-                )
-
-                early_stop = EarlyStopping(monitor='val_loss', patience=5, mode='min')
+                # checkpoint = ModelCheckpoint(
+                #     monitor='val_f1', mode='max', save_top_k=1, dirpath=log_path, filename='{epoch}-{val_f1:.3f}'
+                # )
+                #
+                # early_stop = EarlyStopping(monitor='val_loss', patience=5, mode='min')
 
                 model = ModelClass(num_classes=7)
                 logging.info(f"🚀 Training: {label}")
@@ -63,7 +68,10 @@ def run_experiments(gans, real_rates, model_classes, real_csv_path, output_dir='
                     max_epochs=max_epochs,
                     accelerator='auto',
                     devices='auto',
-                    callbacks=[early_stop, checkpoint],
+                    callbacks=[
+                        early_stop,
+                        checkpoint,
+                    ],
                     log_every_n_steps=10,
                 )
 
@@ -81,7 +89,6 @@ def run_experiments(gans, real_rates, model_classes, real_csv_path, output_dir='
                 }
 
                 results.append(summary)
-
                 with open(log_path / 'result.yaml', 'w') as f:
                     yaml.dump(summary, f)
 

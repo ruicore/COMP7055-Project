@@ -1,0 +1,7 @@
+kaggle:
+  - /kaggle/input/stylegan4216/pytorch/default/1/network-snapshot-004216x64.pkl
+  - /kaggle/input/stylegan4032/pytorch/default/1/network-snapshot-004032.pkl
+
+
+local:
+  - .cache/gan/network-snapshot-004216x64.pkl'

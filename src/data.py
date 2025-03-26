@@ -19,15 +19,18 @@ def create_synthetic_cache_dir(base_dir: str, gan_path: str, rate: float) -> str
 
 
 class FER2013CSV(Dataset):
-    def __init__(self, csv_file, split='Training', transform=None):
+    def __init__(self, csv_file: str, split: str = 'Training'):
         self.data = pd.read_csv(csv_file)
         self.data = self.data[self.data['Usage'] == split]
-        self.transform = transform or transforms.Compose(
+        self.transform = transforms.Compose(
             [
                 transforms.Grayscale(num_output_channels=3),
                 transforms.Resize((224, 224)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
             ]
         )
 
@@ -50,7 +53,10 @@ class _SyntheticDataset(Dataset):
                 transforms.Grayscale(num_output_channels=3),
                 transforms.Resize((224, 224)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
             ]
         )
 
@@ -79,6 +85,9 @@ class FERData(L.LightningDataModule):
         force_refresh=False,
     ):
         super().__init__()
+        self.val_dataset = None
+        self.test_dataset = None
+        self.train_dataset = None
         self.G = generator
         self.gan_path = gan_path
         self.real_path = real_path
