@@ -6,9 +6,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
 import yaml
+from run import plot_results, run_experiments
 
 from models import ConvNeXtTiny, DenseNet121, EfficientNetB0, MobileNetV3, ResNet18, ResNet50, ShuffleNetV2
-from run import plot_results, run_experiments
 
 MODEL_MAP = {
     'resnet18': ResNet18,
