@@ -18,8 +18,6 @@ class LitClassification(L.LightningModule):
         self.recall = Recall(task='multiclass', num_classes=num_classes, average='macro')
         self.confmat = ConfusionMatrix(task='multiclass', num_classes=num_classes)
 
-        self.predictions = []
-        self.targets = []
 
     def set_model(self) -> Module:
         raise NotImplementedError
@@ -58,13 +56,10 @@ class LitClassification(L.LightningModule):
         self.log('test_recall', self.recall(preds, y), prog_bar=False)
         self.log('test_loss', F.cross_entropy(logits, y), prog_bar=False)
 
-        self.predictions.append(preds.cpu())
-        self.targets.append(y.cpu())
+        self.confmat.update(preds, y)
 
     def on_test_epoch_end(self):
-        predictions = torch.cat(self.predictions)
-        targets = torch.cat(self.targets)
-        cm = self.confmat(predictions, targets)
+        cm = self.confmat.compute()
         print('\n🧩 Confusion Matrix:')
         print(cm)
 
