@@ -1,4 +1,5 @@
 import hashlib
+import math
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import Dataset, random_split, DataLoader, ConcatDataset
 from torchmetrics.classification import Accuracy, F1Score, AUROC, Precision, Recall
 from torchmetrics.classification import ConfusionMatrix
@@ -25,6 +27,10 @@ import legacy
 
 warnings.filterwarnings('ignore', category=FutureWarning, module='traitlets')
 warnings.filterwarnings('ignore', category=UserWarning, module='torchmetrics')
+
+
+def scale_learning_rate(current_batch_size, base_lr: float = 1e-3, base_batch_size: int = 256):
+    return base_lr * (current_batch_size / base_batch_size)
 
 
 def create_synthetic_cache_dir(base_dir: str, gan_path: str, rate: float) -> str:
@@ -85,6 +91,7 @@ class LitClassification(L.LightningModule):
 
         self.log('train_loss', self.train_loss_ema, prog_bar=True)
         self.log('train_acc', self.train_acc_ema, prog_bar=True)
+        self.log('lr', self.trainer.optimizers[0].param_groups[0]['lr'], prog_bar=True)
 
         return loss
 
@@ -119,8 +126,27 @@ class LitClassification(L.LightningModule):
         print('\n🧩 Confusion Matrix:')
         print(cm)
 
+    def lr_schedule_fn(self, current_epoch: int) -> float:
+        warmup_epochs = 5
+        total_epochs = self.trainer.max_epochs
+        if current_epoch < warmup_epochs:
+            return (current_epoch + 1) / warmup_epochs
+        else:
+            progress = (current_epoch - warmup_epochs) / (total_epochs - warmup_epochs)
+            return 0.5 * (1 + math.cos(progress * math.pi))
+
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        scheduler = LambdaLR(optimizer, lr_lambda=self.lr_schedule_fn)
+
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch',
+                'monitor': 'val_loss',
+            },
+        }
 
 
 class ResNet50(LitClassification):
@@ -249,6 +275,7 @@ class FERData(L.LightningDataModule):
         num_classes=7,
         batch_size=64,
         num_workers=4,
+        prefetch_factor=2,
     ):
         """
         Lightning DataModule for training with synthetic and optionally real data.
@@ -282,6 +309,7 @@ class FERData(L.LightningDataModule):
         self.num_classes = num_classes
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.prefetch_factor = prefetch_factor
 
         self.val_dataset = None
         self.train_dataset = None
@@ -356,7 +384,7 @@ class FERData(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            prefetch_factor=4,
+            prefetch_factor=self.prefetch_factor,
         )
 
     def val_dataloader(self):
@@ -365,7 +393,7 @@ class FERData(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            prefetch_factor=4,
+            prefetch_factor=self.prefetch_factor,
         )
 
     def test_dataloader(self):
@@ -374,7 +402,7 @@ class FERData(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            prefetch_factor=4,
+            prefetch_factor=self.prefetch_factor,
         )
 
 
@@ -393,9 +421,12 @@ def run_experiments(
 
         for rate in real_rates:
             for class_ in model_class:
-                model = class_(num_classes=7)
+                batch_size = 3072
+                scaled_lr = scale_learning_rate(batch_size)
+
+                model = class_(num_classes=7, lr=scaled_lr)
                 label = f"{class_.__name__}_rate{rate}_gan{Path(gan_path).stem}"
-                print(f"\n🚀 Training: {label}")
+                print(f"\n🚀 Training: {label} | LR: {scaled_lr:.5f} | BS: {batch_size}")
 
                 early_stop = EarlyStopping(
                     monitor='val_loss',
@@ -421,9 +452,11 @@ def run_experiments(
                     data_dir='tmp_fake',
                     real_path=real_csv_path,
                     rate=rate,
-                    batch_size=2018,
-                    num_workers=8,
+                    batch_size=batch_size,
+                    prefetch_factor=8,
+                    num_workers=16,
                 )
+
                 trainer = Trainer(
                     max_epochs=100,
                     accelerator='auto',
