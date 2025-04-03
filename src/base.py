@@ -18,7 +18,6 @@ class LitClassification(L.LightningModule):
         self.recall = Recall(task='multiclass', num_classes=num_classes, average='macro')
         self.confmat = ConfusionMatrix(task='multiclass', num_classes=num_classes)
 
-
     def set_model(self) -> Module:
         raise NotImplementedError
 
