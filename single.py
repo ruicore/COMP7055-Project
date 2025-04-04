@@ -29,10 +29,6 @@ warnings.filterwarnings('ignore', category=FutureWarning, module='traitlets')
 warnings.filterwarnings('ignore', category=UserWarning, module='torchmetrics')
 
 
-def scale_learning_rate(current_batch_size, base_lr: float = 1e-3, base_batch_size: int = 256):
-    return base_lr * (current_batch_size / base_batch_size)
-
-
 def create_synthetic_cache_dir(base_dir: str, gan_path: str, rate: float) -> str:
     """
     Generate a unique cache directory name for synthetic images based on GAN and real data ratio.
@@ -311,10 +307,6 @@ class FERData(L.LightningDataModule):
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
 
-        self.val_dataset = None
-        self.train_dataset = None
-        self.test_dataset = None
-
     def prepare_data(self):
 
         self.data_dir = create_synthetic_cache_dir('tmp_fake', self.gan_path, self.rate)
@@ -421,12 +413,9 @@ def run_experiments(
 
         for rate in real_rates:
             for class_ in model_class:
-                batch_size = 3072
-                scaled_lr = scale_learning_rate(batch_size)
-
-                model = class_(num_classes=7, lr=scaled_lr)
-                label = f"{class_.__name__}_rate{rate}_gan{Path(gan_path).stem}"
-                print(f"\n🚀 Training: {label} | LR: {scaled_lr:.5f} | BS: {batch_size}")
+                model = class_(num_classes=7)
+                label = f"{class_.__name__}_gan{Path(gan_path).stem}"
+                print(f"\n🚀 Training: {label} at rate {rate:.2f}...")
 
                 early_stop = EarlyStopping(
                     monitor='val_loss',
@@ -437,12 +426,12 @@ def run_experiments(
                     monitor='val_f1',
                     mode='max',
                     save_top_k=1,
-                    dirpath=Path(save_dir or './') / 'checkpoints' / label,
+                    dirpath=Path(save_dir or './') / 'checkpoints' / str(rate) / label,
                     filename='{epoch}-{val_f1:.3f}',
                 )
                 logger = TensorBoardLogger(
                     save_dir=Path(save_dir or './') / 'lightning_logs',
-                    name='experiments',
+                    name=str(rate),
                     version=label,
                 )
                 lr_monitor = LearningRateMonitor(logging_interval='epoch')
@@ -452,9 +441,9 @@ def run_experiments(
                     data_dir='tmp_fake',
                     real_path=real_csv_path,
                     rate=rate,
-                    batch_size=batch_size,
+                    batch_size=512,
                     prefetch_factor=8,
-                    num_workers=16,
+                    num_workers=10,
                 )
 
                 trainer = Trainer(
