@@ -29,21 +29,19 @@ warnings.filterwarnings('ignore', category=FutureWarning, module='traitlets')
 warnings.filterwarnings('ignore', category=UserWarning, module='torchmetrics')
 
 
-def create_synthetic_cache_dir(base_dir: str, gan_path: str, rate: float) -> str:
+def create_synthetic_cache_dir(base_dir: str, gan_path: str) -> str:
     """
     Generate a unique cache directory name for synthetic images based on GAN and real data ratio.
 
     Args:
         base_dir (str): Root directory where cached images will be stored.
         gan_path (str): Path to the StyleGAN .pkl model.
-        rate (float): Real data proportion used during training (0.0 to 1.0).
 
     Returns:
         str: Unique cache directory path under `base_dir`.
     """
     gan_hash = hashlib.md5(gan_path.encode()).hexdigest()[:8]
-    rate_tag = f"rate{int(rate * 100)}"
-    return str(Path(base_dir) / f"gan_{gan_hash}_{rate_tag}")
+    return str(Path(base_dir) / f"gan_{gan_hash}")
 
 
 class LitClassification(L.LightningModule):
@@ -95,7 +93,7 @@ class LitClassification(L.LightningModule):
         x, y = batch
         logits = self(x)
         loss = F.cross_entropy(logits, y)
-        self.log('val_loss', loss, prog_bar=True)
+        self.log('val_loss', loss, prog_bar=True, on_epoch=True)
         self.log('val_acc', self.accuracy(logits, y), prog_bar=True)
         self.log('val_f1', self.f1(logits, y), prog_bar=True)
         self.log('val_auroc', self.auroc(logits, y), prog_bar=False)
@@ -309,7 +307,7 @@ class FERData(L.LightningDataModule):
 
     def prepare_data(self):
 
-        self.data_dir = create_synthetic_cache_dir('tmp_fake', self.gan_path, self.rate)
+        self.data_dir = create_synthetic_cache_dir('tmp_fake', self.gan_path)
         data_path = Path(self.data_dir)
         if not data_path.exists() or not any(data_path.iterdir()):
             print(f"🛠️ Generating synthetic images at {data_path} ...")
@@ -377,6 +375,8 @@ class FERData(L.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             prefetch_factor=self.prefetch_factor,
+            persistent_workers=True,
+            pin_memory=True,
         )
 
     def val_dataloader(self):
@@ -386,6 +386,8 @@ class FERData(L.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             prefetch_factor=self.prefetch_factor,
+            persistent_workers=True,
+            pin_memory=True,
         )
 
     def test_dataloader(self):
@@ -395,6 +397,8 @@ class FERData(L.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             prefetch_factor=self.prefetch_factor,
+            persistent_workers=True,
+            pin_memory=True,
         )
 
 
@@ -405,9 +409,9 @@ def run_experiments(
     real_csv_path,
     save_dir: str | None = None,
 ):
-    all_results = []
 
     for gan_path in gans:
+        all_results = []
         with open(gan_path, 'rb') as f:
             gan = legacy.load_network_pkl(f)['G_ema'].to('cuda')
 
@@ -426,13 +430,13 @@ def run_experiments(
                     monitor='val_f1',
                     mode='max',
                     save_top_k=1,
-                    dirpath=Path(save_dir or './') / 'checkpoints' / str(rate) / label,
+                    dirpath=Path(save_dir or './') / 'checkpoints' / Path(gan_path).stem / str(rate) / class_.__name__,
                     filename='{epoch}-{val_f1:.3f}',
                 )
                 logger = TensorBoardLogger(
-                    save_dir=Path(save_dir or './') / 'lightning_logs',
+                    save_dir=Path(save_dir or './') / 'lightning_logs' / Path(gan_path).stem,
                     name=str(rate),
-                    version=label,
+                    version=class_.__name__,
                 )
                 lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
@@ -441,9 +445,9 @@ def run_experiments(
                     data_dir='tmp_fake',
                     real_path=real_csv_path,
                     rate=rate,
-                    batch_size=512,
-                    prefetch_factor=8,
-                    num_workers=10,
+                    batch_size=128,
+                    prefetch_factor=4,
+                    num_workers=8,
                 )
 
                 trainer = Trainer(
@@ -481,7 +485,7 @@ def run_experiments(
 
                 print(f"✅ Finished {label}")
 
-    csv_path = Path(save_dir or './') / 'results.csv'
-    df = pd.DataFrame(all_results)
-    df.to_csv(csv_path, index=False)
-    print(f"\n📄 All results saved to {csv_path}")
+        csv_path = Path(save_dir or './') / f'{Path(gan_path).stem}_results.csv'
+        df = pd.DataFrame(all_results)
+        df.to_csv(csv_path, index=False)
+        print(f"\n📄 All results saved to {csv_path}")
