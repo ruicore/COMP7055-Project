@@ -489,3 +489,30 @@ def run_experiments(
         df = pd.DataFrame(all_results)
         df.to_csv(csv_path, index=False)
         print(f"\n📄 All results saved to {csv_path}")
+
+
+if __name__ == '__main__':
+    gans = [
+        '/kaggle/input/stylegan4032/pytorch/default/1/network-snapshot-004032.pkl',
+        '/kaggle/input/stylegan4216/pytorch/default/1/network-snapshot-004216x64.pkl',
+        '/kaggle/input/stylegan4216/pytorch/ada/1/2217x64.ada.pkl',
+    ]
+    real_rates = [
+        0.0,
+        0.1,
+        0.3,
+        0.5,
+        1.0,
+    ]
+    model_classes = [
+        ResNet18,
+        ResNet50,
+        EfficientNetB0,
+        MobileNetV3,
+        ShuffleNetV2,
+        DenseNet121,
+        ConvNeXtTiny,
+    ]
+
+    real_csv_path = '/kaggle/input/fer2013comp/fer2013.csv'
+    run_experiments(gans, real_rates, model_classes, real_csv_path)
