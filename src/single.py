@@ -12,14 +12,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from pytorch_lightning.callbacks import LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import Dataset, random_split, DataLoader, ConcatDataset
-from torchmetrics.classification import Accuracy, F1Score, AUROC, Precision, Recall
-from torchmetrics.classification import ConfusionMatrix
-from torchvision import transforms, models
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
+from torchmetrics.classification import AUROC, Accuracy, ConfusionMatrix, F1Score, Precision, Recall
+from torchvision import models, transforms
 from torchvision.utils import save_image
 from tqdm import tqdm
 
@@ -409,7 +407,6 @@ def run_experiments(
     real_csv_path,
     save_dir: str | None = None,
 ):
-
     for gan_path in gans:
         all_results = []
         with open(gan_path, 'rb') as f:
@@ -421,22 +418,24 @@ def run_experiments(
                 label = f"{class_.__name__}_gan{Path(gan_path).stem}"
                 print(f"\n🚀 Training: {label} at rate {rate:.2f}...")
 
-                early_stop = EarlyStopping(
-                    monitor='val_loss',
-                    patience=10,
-                    mode='min',
+                wandb_logger = WandbLogger(
+                    project='fer2013-gan-comparison',
+                    name=f"{class_.__name__}_{Path(gan_path).stem}_{rate}",
+                    config={
+                        'model': class_.__name__,
+                        'gan': Path(gan_path).stem,
+                        'rate': rate,
+                    },
+                    save_dir=save_dir or './',
                 )
+
+                early_stop = EarlyStopping(monitor='val_loss', patience=10, mode='min')
                 checkpoint = ModelCheckpoint(
                     monitor='val_f1',
                     mode='max',
                     save_top_k=1,
                     dirpath=Path(save_dir or './') / 'checkpoints' / Path(gan_path).stem / str(rate) / class_.__name__,
                     filename='{epoch}-{val_f1:.3f}',
-                )
-                logger = TensorBoardLogger(
-                    save_dir=Path(save_dir or './') / 'lightning_logs' / Path(gan_path).stem,
-                    name=str(rate),
-                    version=class_.__name__,
                 )
                 lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
@@ -457,7 +456,7 @@ def run_experiments(
                     devices='auto',
                     callbacks=[early_stop, checkpoint, lr_monitor],
                     log_every_n_steps=10,
-                    logger=logger,
+                    logger=wandb_logger,
                 )
 
                 trainer.fit(model, datamodule=data_module)
@@ -483,6 +482,7 @@ def run_experiments(
                     }
                 )
 
+                wandb_logger.experiment.finish()
                 print(f"✅ Finished {label}")
 
         csv_path = Path(save_dir or './') / f'{Path(gan_path).stem}_results.csv'
