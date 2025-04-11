@@ -1,15 +1,18 @@
 import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import umap.umap_ as umap
+from PIL import Image
 from pytorch_lightning import seed_everything
+from scipy import linalg
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
+import pandas as pd
 from single import FER2013CSV, ConvNeXtTiny, SyntheticDataset
 
 
@@ -40,14 +43,76 @@ def extract_features(dataloader, model):
     return features, labels
 
 
+def custom_fid(real_feats, fake_feats):
+    mu1, sigma1 = np.mean(real_feats, axis=0), np.cov(real_feats, rowvar=False)
+    mu2, sigma2 = np.mean(fake_feats, axis=0), np.cov(fake_feats, rowvar=False)
+    ssdiff = np.sum((mu1 - mu2) ** 2.0)
+    covmean, _ = linalg.sqrtm(sigma1 @ sigma2, disp=False)
+    if np.iscomplexobj(covmean):
+        covmean = covmean.real
+    fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
+    return fid
+
+
+def evaluate_per_class_fid(
+    real_feats,
+    real_labels,
+    gan_feats,
+    gan_labels,
+    class_names=None,
+    model_label='model',
+    save_dir: str | Path = 'outputs',
+):
+    results = []
+    classes = np.unique(real_labels)
+
+    for cls in classes:
+        real_idx = real_labels == cls
+        gan_idx = gan_labels == cls
+
+        real_subset = real_feats[real_idx]
+        gan_subset = gan_feats[gan_idx]
+
+        if len(real_subset) < 2 or len(gan_subset) < 2:
+            fid = float('nan')
+        else:
+            fid = custom_fid(real_subset, gan_subset)
+
+        label = class_names[cls] if class_names else f"Class {cls}"
+        results.append((label, fid))
+
+    print('\nPer-class FID results:')
+    print('Class\t\tFID')
+    print('--------------------------')
+    for label, fid in results:
+        print(f"{label:<10}\t{fid:.2f}")
+
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = save_dir / f"fid_per_class_{model_label}.csv"
+    with open(csv_path, 'w', newline='') as f:
+        df = pd.DataFrame(results, columns=['Class', 'FID'])
+        df.to_csv(csv_path, index=False)
+
+    labels, fids = zip(*results)
+    plt.figure(figsize=(10, 5))
+    plt.bar(labels, fids, color='skyblue')
+    plt.xticks(rotation=45)
+    plt.ylabel('FID')
+    plt.title(f'Per-class FID - {model_label}')
+    plt.tight_layout()
+    plt.savefig(Path(save_dir) / f"fid_per_class_bar_{model_label}.png", dpi=300)
+    plt.close()
+
+    return results
+
+
 def plot_embedding(
     real_features,
     gan_features,
     real_labels,
     gan_labels,
     reducer,
-    name,
-    model_label,
     class_names=None,
     save_dir='outputs',
 ):
@@ -56,7 +121,7 @@ def plot_embedding(
     reduced = reducer.fit_transform(combined)
     num_classes = len(np.unique(labels))
 
-    os.makedirs(save_dir, exist_ok=True)
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
 
     for i in range(num_classes):
         real_idx = np.where(real_labels == i)[0]
@@ -70,73 +135,86 @@ def plot_embedding(
         plt.scatter(
             reduced[len(real_labels) + gan_idx, 0],
             reduced[len(real_labels) + gan_idx, 1],
-            label=f'{label} ({model_label})',
+            label=f'{label}',
             alpha=0.6,
             marker='x',
             c='red',
         )
 
+        method_name = type(reducer).__name__
         plt.legend()
-        plt.title(f'{name}: {label} - {model_label}')
+        plt.title(f'{method_name}: {label}')
         plt.grid(True)
 
-        filename = f'{name.lower()}_{label.replace(" ", "_")}_{model_label.replace(" ", "_")}.png'
-        plt.savefig(os.path.join(save_dir, filename), dpi=300)
+        plt.savefig(Path(save_dir) / f'{label}.png', dpi=300)
         plt.close()
 
 
-def compare_all_embeddings(class_names=None, save_dir='outputs'):
+def stitch_class_images(image_dir, output_path, grid_size=(2, 4)):
+    files = sorted([f for f in os.listdir(image_dir) if f.endswith('.png')])
+    images = [Image.open(os.path.join(image_dir, f)) for f in files]
+
+    if not images:
+        return
+
+    widths, heights = zip(*(i.size for i in images))
+    max_width = max(widths)
+    max_height = max(heights)
+    grid_cols, grid_rows = grid_size
+
+    stitched_img = Image.new('RGB', (max_width * grid_cols, max_height * grid_rows), color='white')
+
+    for idx, img in enumerate(images):
+        x = (idx % grid_cols) * max_width
+        y = (idx // grid_cols) * max_height
+        stitched_img.paste(img, (x, y))
+
+    stitched_img.save(output_path)
+
+
+def compare_all_embeddings(class_names, save_dir='outputs'):
     real_model = FeatureExtractor('epoch=44-val_f1=0.509.ckpt').cuda()
     gan_models = [
-        (FeatureExtractor('epoch=5-val_f1=0.243.ckpt').cuda(), 'GAN 0.0'),
-        (FeatureExtractor('epoch=14-val_f1=0.328.ckpt').cuda(), 'GAN 0.1'),
-        (FeatureExtractor('epoch=15-val_f1=0.404.ckpt').cuda(), 'GAN 0.3'),
-        (FeatureExtractor('epoch=35-val_f1=0.443.ckpt').cuda(), 'GAN 0.5'),
+        (FeatureExtractor('epoch=5-val_f1=0.243.ckpt').cuda(), 'GAN0.0'),
+        (FeatureExtractor('epoch=14-val_f1=0.328.ckpt').cuda(), 'GAN0.1'),
+        (FeatureExtractor('epoch=15-val_f1=0.404.ckpt').cuda(), 'GAN0.3'),
+        (FeatureExtractor('epoch=35-val_f1=0.443.ckpt').cuda(), 'GAN0.5'),
     ]
 
     fake_loader = DataLoader(SyntheticDataset('gan_2859e4b2_rate0'), batch_size=64, num_workers=8)
     real_loader = DataLoader(FER2013CSV('fer2013.csv'), batch_size=64, num_workers=8)
 
     real_features, real_labels = extract_features(real_loader, real_model)
-
-    for gan_model, label in gan_models:
+    for gan_model, model_label in gan_models:
         gan_features, gan_labels = extract_features(fake_loader, gan_model)
 
-        plot_embedding(
+        evaluate_per_class_fid(
             real_features,
-            gan_features,
             real_labels,
+            gan_features,
             gan_labels,
+            class_names=class_names,
+            model_label=model_label,
+            save_dir=Path(save_dir) / model_label / 'fid',
+        )
+
+        for reducer in [
             TSNE(n_components=2, random_state=42),
-            name='t-SNE',
-            model_label=label,
-            class_names=class_names,
-            save_dir=os.path.join(save_dir, 'tsne'),
-        )
-
-        plot_embedding(
-            real_features,
-            gan_features,
-            real_labels,
-            gan_labels,
             umap.UMAP(n_components=2, random_state=42),
-            name='UMAP',
-            model_label=label,
-            class_names=class_names,
-            save_dir=os.path.join(save_dir, 'umap'),
-        )
-
-        plot_embedding(
-            real_features,
-            gan_features,
-            real_labels,
-            gan_labels,
             PCA(n_components=2),
-            name='PCA',
-            model_label=label,
-            class_names=class_names,
-            save_dir=os.path.join(save_dir, 'pca'),
-        )
+        ]:
+            method = type(reducer).__name__
+            subdir = Path(save_dir) / model_label / method.lower()
+            plot_embedding(
+                real_features,
+                gan_features,
+                real_labels,
+                gan_labels,
+                reducer,
+                class_names=class_names,
+                save_dir=subdir,
+            )
+            stitch_class_images(subdir, Path(save_dir) / f'{method.lower()}_summary.png')
 
 
 if __name__ == '__main__':
