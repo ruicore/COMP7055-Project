@@ -204,7 +204,7 @@ class ConvNeXtTiny(LitClassification):
         return self.model
 
 
-class _SyntheticDataset(Dataset):
+class SyntheticDataset(Dataset):
     def __init__(self, image_dir: str):
         self.image_paths = list(Path(image_dir).rglob('*.png'))
         self.transform = transforms.Compose(
@@ -349,7 +349,7 @@ class FERData(L.LightningDataModule):
                     save_image(fake_images[i], str(filepath))
 
     def setup(self, stage: str = 'fit'):
-        fake_dataset = _SyntheticDataset(self.data_dir)
+        fake_dataset = SyntheticDataset(self.data_dir)
 
         if self.rate > 0:
             real_size = int(self.rate * self.total_num)
