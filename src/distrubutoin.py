@@ -3,16 +3,18 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 import umap.umap_ as umap
 from PIL import Image
 from pytorch_lightning import seed_everything
 from scipy import linalg
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE, trustworthiness
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import pandas as pd
+
 from single import FER2013CSV, ConvNeXtTiny, SyntheticDataset
 
 
@@ -54,13 +56,13 @@ def custom_fid(real_feats, fake_feats):
     return fid
 
 
-def evaluate_per_class_fid(
+def evaluate_fid(
     real_feats,
     real_labels,
     gan_feats,
     gan_labels,
     class_names=None,
-    model_label='model',
+    data_label='GAN',
     save_dir: str | Path = 'outputs',
 ):
     results = []
@@ -89,19 +91,18 @@ def evaluate_per_class_fid(
 
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = save_dir / f"fid_per_class_{model_label}.csv"
-    with open(csv_path, 'w', newline='') as f:
-        df = pd.DataFrame(results, columns=['Class', 'FID'])
-        df.to_csv(csv_path, index=False)
+    csv_path = save_dir / f"fid_per_class_{data_label}.csv"
+    df = pd.DataFrame(results, columns=['Class', 'FID'])
+    df.to_csv(csv_path, index=False)
 
     labels, fids = zip(*results)
     plt.figure(figsize=(10, 5))
     plt.bar(labels, fids, color='skyblue')
     plt.xticks(rotation=45)
     plt.ylabel('FID')
-    plt.title(f'Per-class FID - {model_label}')
+    plt.title(f'Per-class FID - {data_label}')
     plt.tight_layout()
-    plt.savefig(Path(save_dir) / f"fid_per_class_bar_{model_label}.png", dpi=300)
+    plt.savefig(Path(save_dir) / f"fid_per_class_bar_{data_label}.png", dpi=300)
     plt.close()
 
     return results
@@ -115,11 +116,22 @@ def plot_embedding(
     reducer,
     class_names=None,
     save_dir='outputs',
+    data_label='GAN',
+    method_name='method',
+    metrics_log=None,
 ):
     combined = np.concatenate([real_features, gan_features], axis=0)
     labels = np.concatenate([real_labels, gan_labels], axis=0)
     reduced = reducer.fit_transform(combined)
     num_classes = len(np.unique(labels))
+
+    combined_pca50 = PCA(n_components=50).fit_transform(combined)
+    trust = trustworthiness(combined_pca50, reduced, n_neighbors=5)
+
+    print(f"\n{type(reducer).__name__} Trustworthiness: {trust:.4f}")
+
+    if metrics_log is not None:
+        metrics_log.append({'Data': data_label, 'Method': method_name, 'Trustworthiness': trust})
 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
@@ -141,7 +153,6 @@ def plot_embedding(
             c='red',
         )
 
-        method_name = type(reducer).__name__
         plt.legend()
         plt.title(f'{method_name}: {label}')
         plt.grid(True)
@@ -174,28 +185,33 @@ def stitch_class_images(image_dir, output_path, grid_size=(2, 4)):
 
 def compare_all_embeddings(class_names, save_dir='outputs'):
     real_model = FeatureExtractor('epoch=44-val_f1=0.509.ckpt').cuda()
-    gan_models = [
-        (FeatureExtractor('epoch=5-val_f1=0.243.ckpt').cuda(), 'GAN0.0'),
-        (FeatureExtractor('epoch=14-val_f1=0.328.ckpt').cuda(), 'GAN0.1'),
-        (FeatureExtractor('epoch=15-val_f1=0.404.ckpt').cuda(), 'GAN0.3'),
-        (FeatureExtractor('epoch=35-val_f1=0.443.ckpt').cuda(), 'GAN0.5'),
+    fake_loaders = [
+        (DataLoader(SyntheticDataset('tmp_fake/gan_2859e4b2_rate0'), batch_size=64, num_workers=8), 'GAN0.0'),
+        (DataLoader(SyntheticDataset('tmp_fake/gan_2859e4b2_rate10'), batch_size=64, num_workers=8), 'GAN0.1'),
+        (DataLoader(SyntheticDataset('tmp_fake/gan_2859e4b2_rate30'), batch_size=64, num_workers=8), 'GAN0.3'),
+        (DataLoader(SyntheticDataset('tmp_fake/gan_2859e4b2_rate50'), batch_size=64, num_workers=8), 'GAN0.5'),
     ]
 
-    fake_loader = DataLoader(SyntheticDataset('gan_2859e4b2_rate0'), batch_size=64, num_workers=8)
-    real_loader = DataLoader(FER2013CSV('fer2013.csv'), batch_size=64, num_workers=8)
+    real_features, real_labels = extract_features(
+        DataLoader(
+            FER2013CSV('fer2013.csv'),
+            batch_size=64,
+            num_workers=8,
+        ),
+        real_model,
+    )
+    metrics_log = []
 
-    real_features, real_labels = extract_features(real_loader, real_model)
-    for gan_model, model_label in gan_models:
-        gan_features, gan_labels = extract_features(fake_loader, gan_model)
-
-        evaluate_per_class_fid(
+    for fake_loader, data_label in fake_loaders:
+        gan_features, gan_labels = extract_features(fake_loader, real_model)
+        evaluate_fid(
             real_features,
             real_labels,
             gan_features,
             gan_labels,
             class_names=class_names,
-            model_label=model_label,
-            save_dir=Path(save_dir) / model_label / 'fid',
+            data_label=data_label,
+            save_dir=Path(save_dir) / data_label / 'fid',
         )
 
         for reducer in [
@@ -204,7 +220,7 @@ def compare_all_embeddings(class_names, save_dir='outputs'):
             PCA(n_components=2),
         ]:
             method = type(reducer).__name__
-            subdir = Path(save_dir) / model_label / method.lower()
+            subdir = Path(save_dir) / data_label / method.lower()
             plot_embedding(
                 real_features,
                 gan_features,
@@ -213,8 +229,22 @@ def compare_all_embeddings(class_names, save_dir='outputs'):
                 reducer,
                 class_names=class_names,
                 save_dir=subdir,
+                data_label=data_label,
+                method_name=method,
+                metrics_log=metrics_log,
             )
             stitch_class_images(subdir, Path(save_dir) / f'{method.lower()}_summary.png')
+
+    df_metrics = pd.DataFrame(metrics_log)
+    df_metrics.to_csv(Path(save_dir) / 'embedding_metrics.csv', index=False)
+
+    pivot = df_metrics.pivot(index='Model', columns='Method', values='Silhouette')
+    plt.figure(figsize=(8, 5))
+    plt.title('Silhouette Score Heatmap')
+    sns.heatmap(pivot, annot=True, cmap='coolwarm', fmt='.2f')
+    plt.tight_layout()
+    plt.savefig(Path(save_dir) / 'silhouette_heatmap.png', dpi=300)
+    plt.close()
 
 
 if __name__ == '__main__':
@@ -232,4 +262,3 @@ if __name__ == '__main__':
         ],
         save_dir='outputs',
     )
-    print(type(PCA(n_components=2)).__name__)
