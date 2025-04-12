@@ -10,8 +10,9 @@ import umap.umap_ as umap
 from PIL import Image
 from pytorch_lightning import seed_everything
 from scipy import linalg
+from scipy.spatial.distance import jensenshannon
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE, trustworthiness
+from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -108,6 +109,20 @@ def evaluate_fid(
     return results
 
 
+def compute_js_on_tsne(real_tsne, gan_tsne, bins=50):
+    all_points = np.vstack([real_tsne, gan_tsne])
+    x_min, y_min = all_points.min(axis=0)
+    x_max, y_max = all_points.max(axis=0)
+
+    H_real, _, _ = np.histogram2d(real_tsne[:, 0], real_tsne[:, 1], bins=bins, range=[[x_min, x_max], [y_min, y_max]])
+    H_gan, _, _ = np.histogram2d(gan_tsne[:, 0], gan_tsne[:, 1], bins=bins, range=[[x_min, x_max], [y_min, y_max]])
+
+    P = H_real.flatten() / H_real.sum()
+    Q = H_gan.flatten() / H_gan.sum()
+
+    return jensenshannon(P, Q)
+
+
 def plot_embedding(
     real_features,
     gan_features,
@@ -125,13 +140,15 @@ def plot_embedding(
     reduced = reducer.fit_transform(combined)
     num_classes = len(np.unique(labels))
 
-    combined_pca50 = PCA(n_components=50).fit_transform(combined)
-    trust = trustworthiness(combined_pca50, reduced, n_neighbors=5)
+    js_dist = compute_js_on_tsne(
+        reduced[: len(real_labels)],
+        reduced[len(real_labels):]
+    )
 
-    print(f"\n{type(reducer).__name__} Trustworthiness: {trust:.4f}")
+    print(f"\n{type(reducer).__name__} Jensen-Shannon Distance: {js_dist:.4f}")
 
     if metrics_log is not None:
-        metrics_log.append({'Data': data_label, 'Method': method_name, 'Trustworthiness': trust})
+        metrics_log.append({'Data': data_label, 'Method': method_name, 'JS_Distance': js_dist})
 
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
@@ -216,8 +233,6 @@ def compare_all_embeddings(class_names, save_dir='outputs'):
 
         for reducer in [
             TSNE(n_components=2, random_state=42),
-            umap.UMAP(n_components=2, random_state=42),
-            PCA(n_components=2),
         ]:
             method = type(reducer).__name__
             subdir = Path(save_dir) / data_label / method.lower()
@@ -238,12 +253,12 @@ def compare_all_embeddings(class_names, save_dir='outputs'):
     df_metrics = pd.DataFrame(metrics_log)
     df_metrics.to_csv(Path(save_dir) / 'embedding_metrics.csv', index=False)
 
-    pivot = df_metrics.pivot(index='Model', columns='Method', values='Silhouette')
+    pivot = df_metrics.pivot(index='Data', columns='Method', values='JS_Distance')
     plt.figure(figsize=(8, 5))
-    plt.title('Silhouette Score Heatmap')
-    sns.heatmap(pivot, annot=True, cmap='coolwarm', fmt='.2f')
+    plt.title('Jensen-Shannon Distance Heatmap')
+    sns.heatmap(pivot, annot=True, cmap='coolwarm', fmt='.4f')
     plt.tight_layout()
-    plt.savefig(Path(save_dir) / 'silhouette_heatmap.png', dpi=300)
+    plt.savefig(Path(save_dir) / 'js_distance_heatmap.png', dpi=300)
     plt.close()
 
 
