@@ -32,7 +32,7 @@ Due to its superior performance, we **discarded cGAN** and used StyleGAN2-ADA ex
 All real and synthetic images were preprocessed to ensure consistent input dimensions.
 
 **1. Grayscale normalization**: All images were normalized to the range [0, 1].
-**2. Resolution alignment**: Synthetic images were generated at **32×32** or **64×64** resolutions and then **resized to 48×48** to match the FER2013 image size. 
+**2. Resolution alignment**: Synthetic images were generated at **32×32** or **64×64** resolutions and then **resized to 48×48** to match the FER2013 image size.
 
 This was necessary because StyleGAN2-ADA only supports generating images at **power-of-two resolutions (e.g., 32, 64)** due to its architecture design. Resizing ensured input consistency across all training samples while allowing us to explore the effects of different GAN resolutions.
 
@@ -123,7 +123,7 @@ Suspecting that low resolution caused significant information loss, we trained a
 To address this systematically, we designed a **controlled experiment** involving:
 
 - **7 CNN models**: As shown in Section 2.3
-- **3 GAN configurations**: 32×32, 64×64, 64×64 with ADA  
+- **3 GAN configurations**: 32×32, 64×64, 64×64 with ADA
 - **5 real/synthetic data ratios**: 0.0, 0.1, 0.3, 0.5, 1.0
 
 Our first focus was on the **ratio = 0.0** condition, i.e., training each model purely on synthetic data.
@@ -223,7 +223,7 @@ This suggests that GAN-generated data fails to fully capture the diversity of re
 **Figure 8.** T-SNE-Happy
 
 
-A detailed class-specific example is shown in **Figure 9**, where we visualized the "Happy" class. 
+A detailed class-specific example is shown in **Figure 9**, where we visualized the "Happy" class.
 
 To quantify the distributional difference, we computed the **Jensen-Shannon Distance (JSD)** between real and GAN-only t-SNE embeddings, which yielded a score of **0.5499**. This value, where:
 1. 0 indicates identical distributions,
@@ -282,5 +282,3 @@ The key is not merely to generate high-resolution images, but to systematically 
 [5] Y. Ismail, "Human Emotion Detection," Kaggle, 2023. [Online]. Available: https://www.kaggle.com/code/youssefismail20/human-emotion-detection. [Accessed: 17-Apr-2025].
 [6] NVlabs, "StyleGAN2-ADA - Official PyTorch implementation," GitHub, 2021. [Online]. Available: https://github.com/NVlabs/stylegan2-ada-pytorch. [Accessed: 17-Apr-2025].
 [7] K. Nayak, "GANs to Generate Synthetic Data," Kaggle, 2022. [Online]. Available: https://www.kaggle.com/code/nayakroshan/gans-to-generate-synthetic-data. [Accessed: 17-Apr-2025].
-
-

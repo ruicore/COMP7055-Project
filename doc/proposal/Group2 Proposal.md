@@ -2,7 +2,7 @@
 Group 2 | 24435015 He Rui | 24427993 Chen Leyan
 
 ## Introduction
-With increasing concern over privacy in facial data, synthetic image generation has emerged as a promising alternative for data-driven model training. 
+With increasing concern over privacy in facial data, synthetic image generation has emerged as a promising alternative for data-driven model training.
 
 In this project, we investigate the feasibility and limitations of classification models trained on synthetic data generated from the FER2013 dataset.
 
