@@ -140,12 +140,10 @@ def plot_embedding(
     reduced = reducer.fit_transform(combined)
     num_classes = len(np.unique(labels))
 
-    js_dist = compute_js_on_tsne(
-        reduced[: len(real_labels)],
-        reduced[len(real_labels):]
-    )
-
-    print(f"\n{type(reducer).__name__} Jensen-Shannon Distance: {js_dist:.4f}")
+    js_dist = None
+    if method_name == 'TSNE':
+        js_dist = compute_js_on_tsne(reduced[: len(real_labels)], reduced[len(real_labels) :])
+        print(f"\n{type(reducer).__name__} Jensen-Shannon Distance: {js_dist:.4f} on {data_label}")
 
     if metrics_log is not None:
         metrics_log.append({'Data': data_label, 'Method': method_name, 'JS_Distance': js_dist})
@@ -233,6 +231,8 @@ def compare_all_embeddings(class_names, save_dir='outputs'):
 
         for reducer in [
             TSNE(n_components=2, random_state=42),
+            PCA(n_components=2),
+            umap.UMAP(n_components=2, random_state=42),
         ]:
             method = type(reducer).__name__
             subdir = Path(save_dir) / data_label / method.lower()
